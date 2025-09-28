@@ -1,0 +1,17 @@
+server:
+  port:8081
+#WebSocket 전용 서버 포트
+
+spring:
+  data:
+    redis:
+      host: localhost
+      port: 6379
+# 로그인한 사용자 정보를 redis에서 꺼내, 웹소켓 상황에서도 사용하기 위해 설정
+  session:
+    store-type: redis
+    timeout: 30m
+
+api:
+ server:
+   base-url: http://localhost:8080 #기존 API 서버 주소

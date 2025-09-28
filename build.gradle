@@ -1,0 +1,36 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.5.3'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.kukokuk'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = '17'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // WebSocket + STOMP
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+    //기본 웹 기능 -> REST API 호출,RestTemplate/WebClient 제공
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // 로그인 사용자 인증 확인용 (Redis 세션 기반으로 Principal을 꺼낼 때 필요)
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+
+    // Redis 연결
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+    //HttpSession을 Redis에 저장.
+    implementation 'org.springframework.session:spring-session-data-redis'
+
+    // Lombok
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
