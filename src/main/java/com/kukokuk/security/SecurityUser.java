@@ -2,6 +2,7 @@ package com.kukokuk.security;
 
 import com.kukokuk.domain.user.vo.User;
 import java.io.Serial;
+import java.io.Serializable;
 import java.util.Collection;
 import lombok.Getter;
 import org.springframework.security.core.CredentialsContainer;
@@ -9,8 +10,11 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+/**
+ * 웹소켓 연결 시, CORS 연결을 허락하는 설정
+ */
 @Getter
-public class SecurityUser implements UserDetails, CredentialsContainer {
+public class SecurityUser implements UserDetails, CredentialsContainer, Serializable {
 
     @Serial
     private static final long serialVersionUID = 8794484743983436451L;
