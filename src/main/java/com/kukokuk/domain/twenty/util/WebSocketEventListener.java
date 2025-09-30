@@ -22,6 +22,7 @@ public class WebSocketEventListener {
         StompHeaderAccessor accessor = StompHeaderAccessor.wrap(event.getMessage());
         Principal principal = accessor.getUser();
         Integer roomNo = (Integer) accessor.getSessionAttributes().get("currentRoomNo");
+        String jssessionId = (String) accessor.getSessionAttributes().get("jssessionId");
 
         if (principal instanceof Authentication auth) {
             SecurityUser securityUser = (SecurityUser) auth.getPrincipal();
@@ -30,8 +31,10 @@ public class WebSocketEventListener {
 
             //교사가 게임방을 나갔을 경우,
             if (role.contains("ROLE_TEACHER") && roomNo != null) {
+                /*twentyService.handleTeacherDisconnect(roomNo,jssessionId);*/
                 twentyService.handleTeacherDisconnect(roomNo);
             } else { // 학생이 나갔을 경우,
+                /*twentyService.handleStudentDisconnect(roomNo, userNo,jssessionId);*/
                 twentyService.handleStudentDisconnect(roomNo, userNo);
             }
         }
