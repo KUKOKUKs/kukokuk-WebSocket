@@ -41,22 +41,5 @@ public class WebSocketEventListener {
             twentyService.handleStudentDisconnect(roomNo,userNo);
         }
     }
-   /* StompHeaderAccessor accessor = StompHeaderAccessor.wrap(event.getMessage());
-    Principal principal = accessor.getUser();
-    Integer roomNo = (Integer) accessor.getSessionAttributes().get("currentRoomNo");
 
-        if (principal instanceof Authentication auth) {
-        SecurityUser securityUser = (SecurityUser) auth.getPrincipal();
-        List<String> role = securityUser.getUser().getRoleNames();
-        int userNo = securityUser.getUser().getUserNo();
-
-        //교사가 게임방을 나갔을 경우,
-        if (role.contains("ROLE_TEACHER") && roomNo != null) {
-
-            twentyService.handleTeacherDisconnect(roomNo);
-        } else { // 학생이 나갔을 경우,
-
-            twentyService.handleStudentDisconnect(roomNo, userNo);
-        }
-    }*/
 }

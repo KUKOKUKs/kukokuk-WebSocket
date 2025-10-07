@@ -1,6 +1,8 @@
 package com.kukokuk.domain.twenty.service;
 
+import com.kukokuk.common.dto.ApiResponse;
 import com.kukokuk.domain.twenty.dto.RoomUser;
+import com.kukokuk.domain.twenty.dto.SendStdMsg;
 import com.kukokuk.domain.twenty.util.RedisLockManager;
 import com.kukokuk.domain.twenty.vo.TwentyRoom;
 import java.time.Instant;
@@ -11,6 +13,10 @@ import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
@@ -28,6 +34,7 @@ public class TwentyService {
     private final RestTemplate restTemplate;
 
     private final Map<Integer, ScheduledFuture<?>> scheduledTasks = new HashMap<>();
+    /*private final RedisTemplate<Object, String> redisTemplate;*/
 
     @Value("${api.server.base-url}")
     private String apiBaseUrl;
@@ -43,11 +50,17 @@ public class TwentyService {
         //API 서버에 게임방 상태 변경 요청
         restTemplate.postForEntity(
             apiBaseUrl + "/api/twenty/room/" + roomNo + "/status?status=IN_PROGRESS", null,
-            Void.class);
+            Void.class);   //=> 그냥 단순 POST 요청일 때는, 이런 식으로만 코딩하면된다.
 
         //최신 게임방 정보 조회
-        TwentyRoom room = restTemplate.getForObject(apiBaseUrl + "/api/twenty/room/" + roomNo,
-            TwentyRoom.class);
+        ResponseEntity<ApiResponse<TwentyRoom>> resp = restTemplate.exchange(
+            apiBaseUrl + "/api/twenty/room/" + roomNo,
+            HttpMethod.GET,
+            null,
+            new ParameterizedTypeReference<ApiResponse<TwentyRoom>>() {}
+        );
+        TwentyRoom room = resp.getBody().getData();
+        //=> 이렇게 값을 조회해오는 경우는 코딩을 이렇게 해야된다.
 
         //브로드 캐스팅
         Map<String, Object> map = new HashMap<>();
@@ -61,9 +74,6 @@ public class TwentyService {
      * 1. 입장한 사용자의 상태를 JOINED로 변경
      * 2. 이 게임방의 참여자 전체의 리스트를 조회
      * 3. 이 게임방을 조회 4. 참여자 리스트와 게임방을 map에 담아 브로드 캐스팅
-     *
-     * @param userNo
-     * @param roomNo
      */
     public void joinGameRoom(int userNo, int roomNo) {
         //1. 입장한 유저 상태 변경
@@ -74,12 +84,22 @@ public class TwentyService {
         restTemplate.postForEntity(apiBaseUrl + "/api/twenty/room/user/status", req, Void.class);
 
         // 2. 최신 참여자 리스트와 방 상태 가져오기
-        List<RoomUser> list = Arrays.asList(
-            restTemplate.getForObject(apiBaseUrl + "/api/twenty/room/" + roomNo + "/players",
-                RoomUser[].class)
+        ResponseEntity<ApiResponse<List<RoomUser>>> resp1 = restTemplate.exchange(
+            apiBaseUrl+ "/api/twenty/room/"+ roomNo + "/players",
+            HttpMethod.GET,
+            null,
+            new ParameterizedTypeReference<ApiResponse<List<RoomUser>>>() {}
         );
-        TwentyRoom room = restTemplate.getForObject(apiBaseUrl + "/api/twenty/room/" + roomNo,
-            TwentyRoom.class);
+        List<RoomUser> list = resp1.getBody().getData();
+
+        //최신 방 데이터 가져오기
+        ResponseEntity<ApiResponse<TwentyRoom>> resp2 = restTemplate.exchange(
+            apiBaseUrl + "/api/twenty/room/" + roomNo,
+            HttpMethod.GET,
+            null,
+            new ParameterizedTypeReference<ApiResponse<TwentyRoom>>() {}
+        );
+        TwentyRoom room = resp2.getBody().getData();
 
         // 3. 브로드캐스팅
         Map<String, Object> map = new HashMap<>();
@@ -96,31 +116,43 @@ public class TwentyService {
      * - 이 게임방의 전체 유저 조회
      * - 게임방을 조회
      * - map 객체에 담아서 브로드캐스팅(전체 유저 + 게임방 상태)
-     *
      * @param roomNo
      */
     public void handleTeacherDisconnect(int roomNo) {
-        TwentyRoom room = restTemplate.getForObject(apiBaseUrl + "/api/twenty/room/" + roomNo,
-            TwentyRoom.class);
+        // 현재 게임방을 조회
+        ResponseEntity<ApiResponse<TwentyRoom>> resp1 = restTemplate.exchange(
+            apiBaseUrl + "/api/twenty/room/" + roomNo,
+            HttpMethod.GET,
+            null,
+            new ParameterizedTypeReference<ApiResponse<TwentyRoom>>() {}
+        );
+        TwentyRoom room = resp1.getBody().getData();
+
+
         Map<String, Object> map = new HashMap<>();
+        // 게임방이 이미 종료된 것이라면, 어차피 조회가 안되서 null일 것이다!
         if (room == null) {
             System.out.println("이미 종료된 게임방입니다.");
             return;
-        } else {    //서버 끊김 및 웹을 닫을 경우.
+        } else {            //그렇다면 그냥 생으로 닫은 경우 이런 식으로 게임방과 사용자의 상태를 변경한다!
             map.put("roomStatus", "STOPPED");
             map.put("status", "LEFT");
             map.put("roomNo", roomNo);
             restTemplate.postForObject(apiBaseUrl + "/api/twenty/room/disconnect/teacher",
                 map, Void.class);
-            map.clear();
-            List<RoomUser> list = Arrays.asList(
-                restTemplate.getForObject(apiBaseUrl + "/api/twenty/room/" + roomNo + "/players",
-                    RoomUser[].class)
-            );
-            map.put("list", list);
-            map.put("roomStatus", "STOPPED");
         }
-        template.convertAndSend("/topic/TeacherDisconnect/" + roomNo, map);
+        String payLoad = "정상적으로 연결을 끊습니다.";
+        taskScheduler.schedule(
+            () -> {
+                try {
+                    template.convertAndSend("/topic/TeacherDisconnect", payLoad);
+                    System.out.println("✅ 교사 종료 이벤트 전송 완료");
+                } catch (Exception e) {
+                    System.err.println("⚠️ 전송 실패: " + e.getMessage());
+                }
+            },
+            Instant.now().plusMillis(500) // 500ms (0.5초) 지연
+        );
     }
 
     /**
@@ -140,10 +172,13 @@ public class TwentyService {
         restTemplate.postForEntity(apiBaseUrl + "/api/twenty/room/user/status", map, Void.class);
         map.clear();
 
-        List<RoomUser> list = Arrays.asList(
-            restTemplate.getForObject(apiBaseUrl + "/api/twenty/room/" + roomNo + "/players",
-                RoomUser[].class)
+        ResponseEntity<ApiResponse<List<RoomUser>>> resp2 = restTemplate.exchange(
+            apiBaseUrl+ "/api/twenty/room/"+ roomNo + "/players",
+            HttpMethod.GET,
+            null,
+            new ParameterizedTypeReference<ApiResponse<List<RoomUser>>>() {}
         );
+        List<RoomUser> list = resp2.getBody().getData();
         map.put("list", list);
         template.convertAndSend("/topic/participants/" + roomNo, map);
     }
@@ -159,6 +194,7 @@ public class TwentyService {
      */
     public void raiseHand(int roomNo, int userNo, String userNickName) {
         if (redisLockManager.trySetQuestioner(roomNo, userNo)) {
+
             // 상태 변경 요청
             restTemplate.postForEntity(
                 apiBaseUrl + "/api/twenty/room/" + roomNo + "/status?status=AWAITING_INPUT",
@@ -169,12 +205,27 @@ public class TwentyService {
                 taskScheduler.schedule(() -> turnTimeout(roomNo), Instant.now().plusSeconds(40));
             scheduledTasks.put(roomNo, scheduledFuture);
 
-            // 브로드캐스팅
+            //브로드캐스팅 시 필수로 보내야하는 값을 일단 보내기
             Map<String, Object> map = new HashMap<>();
             map.put("roomStatus", "AWAITING_INPUT");
             map.put("userNo", userNo);
             map.put("name", userNickName);
             map.put("time", 40); // 프론트에서 시간이 지나는 것을 확인하기 위해서 값을 브로드 캐스팅하는 것.
+
+            // 현재 게임방의 질문&정답 횟수를 조회.
+            ResponseEntity<ApiResponse<Integer>> resp =  restTemplate.exchange(
+                apiBaseUrl + "/api/twenty/room/" + roomNo + "/msgCnt",
+                HttpMethod.GET,
+                null,
+                new ParameterizedTypeReference<ApiResponse<Integer>>() {}
+            );
+            Integer msgCnt = resp.getBody().getData();
+            //질문 횟수가 19개 이상이라면
+            if(msgCnt >= 19) {
+                map.put("msgCnt", msgCnt);
+                map.put("system","정답을 입력해주세요");
+            }
+            // 브로드캐스팅
             template.convertAndSend("/topic/raisehand/" + roomNo, map);
         }
     }
@@ -188,7 +239,7 @@ public class TwentyService {
      * 5.40초 제한시간 해제
      */
     public void turnTimeout(int roomNo) {
-        redisLockManager.releaseQuestionerLock(roomNo);
+        redisLockManager.releaseQuestionerLock(roomNo); //분산 락 초기화
 
         TwentyRoom room = restTemplate.getForObject(apiBaseUrl + "/api/twenty/room/" + roomNo,
             TwentyRoom.class);
@@ -202,27 +253,56 @@ public class TwentyService {
             map.put("roomStatus", "IN_PROGRESS");
             template.convertAndSend("/topic/turnTimeout/" + roomNo, map);
         }
-        scheduledTasks.remove(roomNo);
+        scheduledTasks.remove(roomNo); // 타이머 초기화
     }
+
+
 
     /**
      * 학생이 40초 안에 질문 또는 답변을 제출했을 경우
-     * 1. 먼저 타이머를 취소
-     * 2. Redis에 저장된 1등 학생을 삭제한다.
-     * 3. 게임방의 상태를 "AWAITING_RESPONSE"로 변경
-     * 4. 학생이 제출한 메세지가 질문인지 답변인지 확인 -> log 테이블에 할당
-     * 5. 메세지와, 게임방의 상태 값을 map 객체에 담아 브로드 캐스팅
+     * 1. 먼저 타이머 취소.
+     * 2. Redis에 저장된 1등 학생을 삭제.
+     * 3.게임방의 상태를 "AWAITING_RESPONSE"로 변경
+     * 4.그대로 msg 데이터를 log 테이블에 할당.
+     * 5.msg에 담긴 내용, 방의 상태를 map에 담아 브로드 캐스팅.
+     * @param msg
      */
-    public void submitAnswerOrQuestion(int roomNo, int userNo) {
-        Map<String, Object> map = new HashMap<>();
-        ScheduledFuture<?> scheduledTask = scheduledTasks.get(roomNo);
-        if (scheduledTask != null) {
-            //아까 그 40초 뒤에 일어나는 행위들을 전부 취소 시켜주는 메소드.
-            scheduledTask.cancel(false);
-            scheduledTasks.remove(roomNo);
-        }
-        redisLockManager.releaseQuestionerLock(roomNo);
-        //... 기타 로직 작성
-    }
+    public void sendStdMsg(SendStdMsg msg,String nickName) {
+        ScheduledFuture<?> scheduledTask = scheduledTasks.get(msg.getRoomNo());
 
+        //타이머 삭제
+        if(scheduledTask != null){
+            scheduledTask.cancel(false);
+            scheduledTasks.remove(msg.getRoomNo());
+        }
+
+        //분산 락 초기화
+        redisLockManager.releaseQuestionerLock(msg.getRoomNo());
+
+        //게임방 상태 변경 -> 교사 답변 대기 중으로 변경.
+        restTemplate.postForEntity(apiBaseUrl + "/api/twenty/room/" + msg.getRoomNo() + "/status?status=AWAITING_RESPONSE",
+                              null, Void.class);
+
+        //msg 데이터 log 테이블에 할당하기
+        //body에 msg를 담아서 보내는 것으로 한다.
+        ResponseEntity<ApiResponse<SendStdMsg>> resp = restTemplate.exchange(
+            apiBaseUrl + "/api/twenty/saveLog",
+            HttpMethod.POST,
+            new HttpEntity<>(msg),
+            new ParameterizedTypeReference<ApiResponse<SendStdMsg>>() {}
+        );
+        SendStdMsg currentMsg = resp.getBody().getData();
+
+        //이후 필요한 값만 정해서 브로드 캐스팅
+        Map<String, Object> map = new HashMap<>();
+        map.put("logNo", currentMsg.getLogNo());
+        map.put("userNo", currentMsg.getUserNo());
+        map.put("msgType", currentMsg.getType());
+        map.put("content", currentMsg.getContent());
+        map.put("nickName", nickName);
+        map.put("roomStatus",  "AWAITING_RESPONSE");
+
+        //실시간 채팅 메세지를 화면에 실시간으로 보여주기 위해 브로드 캐스팅 실행.
+        template.convertAndSend("/topic/sendStdMsg/" + msg.getRoomNo(), map);
+    }
 }

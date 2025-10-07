@@ -77,11 +77,16 @@ public class TwentyController {
 
     /**
      * 학생이 질문 또는 메세지를 보냈을 때
-     * @param msg
+     * @param msg: 클라이언트에서 보낸 메세지 1개의 데이터
      */
     @MessageMapping("/sendStdMsg")
-    public void sendStdMsg(@Payload SendStdMsg msg) {
-
+    public void sendStdMsg(@Payload SendStdMsg msg, SimpMessageHeaderAccessor accessor) {
+        if(accessor == null) {
+            System.out.println("사용자 정보가 없습니다.");
+            return;
+        }
+        String nickName = (String) accessor.getSessionAttributes().get("nickName");
+        twentyService.sendStdMsg(msg,nickName);
     }
 
 }
