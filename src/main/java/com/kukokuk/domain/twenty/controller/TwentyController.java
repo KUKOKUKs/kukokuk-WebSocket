@@ -2,12 +2,12 @@ package com.kukokuk.domain.twenty.controller;
 
 import com.kukokuk.domain.twenty.dto.SendStdMsg;
 import com.kukokuk.domain.twenty.service.TwentyService;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
-import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.stereotype.Controller;
 
 @Controller
@@ -46,7 +46,6 @@ public class TwentyController {
 
     /**
      * 교사가 게임 시작 버튼을 눌렀을 때!
-     *
      * @param currentRoomNo
      */
     @MessageMapping("/gameStart/{currentRoomNo}")
@@ -89,4 +88,13 @@ public class TwentyController {
         twentyService.sendStdMsg(msg,nickName);
     }
 
+    /**
+     * 교사가 O&X 버튼을 눌렀을 때,
+     * 학생의 질문 또는 정답의 O,X 처리
+     * @param map roomNo,response
+     */
+    @MessageMapping("/teacherResponse")
+    public void teacherResponse (@Payload Map<String,Object> map){
+        twentyService.teacherResponse(map);
+    }
 }

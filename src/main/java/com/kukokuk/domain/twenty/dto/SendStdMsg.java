@@ -13,4 +13,8 @@ public class SendStdMsg {
     private int roomNo;
     private String content;
     private String type; // 질문인 경우 Q, 정답인 경우 A
+    private int cnt;
+    private String isSuccess; // 정답에 대한 O,X
+    private String answer;    // 질문에 대한 O,X
+    String nickName;          //유저 닉네임
 }
