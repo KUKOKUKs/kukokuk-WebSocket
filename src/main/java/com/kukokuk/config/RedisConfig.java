@@ -6,23 +6,35 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 @Configuration
 public class RedisConfig {
-    //Redis를 실제 네트워크에 연결하는 문장
+
+    @Value("${spring.data.redis.host}")
+    private String redisHost;
+
+    @Value("${spring.data.redis.port}")
+    private int redisPort;
+
     @Bean
-    public RedisConnectionFactory redisConnectionFactory(
-        @Value("${spring.data.redis.host}") String host,
-        @Value("${spring.data.redis.port}") int port) {
-        return new LettuceConnectionFactory(host, port);
+    public RedisConnectionFactory redisConnectionFactory() {
+        return new LettuceConnectionFactory(redisHost, redisPort);
     }
 
-    //위에 연결된 Redis를 이제 쉽게 사용하기 위해 Bean으로 등록하는 문장
     @Bean
-    public RedisTemplate<String, String> redisTemplate(RedisConnectionFactory cf) {
-        RedisTemplate<String, String> t = new RedisTemplate<>();
-        t.setConnectionFactory(cf);
-        return t;
+    public StringRedisTemplate stringRedisTemplate(RedisConnectionFactory factory) {
+        return new StringRedisTemplate(factory);
+    }
+
+    @Bean
+    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory factory) {
+        RedisTemplate<String, Object> redisTemplate = new RedisTemplate<>();
+        redisTemplate.setConnectionFactory(factory);
+        redisTemplate.setKeySerializer(new StringRedisSerializer());
+        redisTemplate.setValueSerializer(new GenericJackson2JsonRedisSerializer());
+        return redisTemplate;
     }
 }
-
