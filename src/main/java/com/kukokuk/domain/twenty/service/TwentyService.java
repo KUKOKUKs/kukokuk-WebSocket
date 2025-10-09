@@ -140,7 +140,6 @@ public class TwentyService {
         // 게임방이 이미 종료된 것이라면, 어차피 조회가 안되서 null일 것이다!
         if (room == null) {
             System.out.println("이미 종료된 게임방입니다.");
-            return;
         } else {            //그렇다면 그냥 생으로 닫은 경우 이런 식으로 게임방과 사용자의 상태를 변경한다!
             map.put("roomStatus", "STOPPED");
             map.put("status", "LEFT");
@@ -148,7 +147,8 @@ public class TwentyService {
             restTemplate.postForObject(apiBaseUrl + "/api/twenty/room/disconnect/teacher",
                 map, Void.class);
         }
-        String payLoad = "정상적으로 연결을 끊습니다.";
+
+        String payLoad = "연결을 끊습니다.";
         taskScheduler.schedule(
             () -> {
                 try {
@@ -342,27 +342,28 @@ public class TwentyService {
     }
 
     /**
-     * 교사가 O&X 버튼을 눌렀을 경우, 학생의 질문&정답에 따라 처리를 달리 한다.
-     * 1. 게임방의 상태를 우선 IN_PROGRESS로 변경
-     * 2 .roomNo로 이 게임방의 가장 최신 메세지 1개를 조회(logNo, type,userNo, content,cnt)
-     *  - cnt: 이 메세지가 몇 번째 메세지인지 - 정수 값
-     * 3. 메세지의 타입에 따라, log테이블를 업데이트 및 브로드 캐스팅
+     * 교사가 O,X 버튼을 눌렀을 경우 처리
+     * 1. map 안의 roomNo, reponse를 꺼낸다.
+     * 2. 게임방의 상태를 IN_PROGRESS로 변경한다.
+     * 3. 가장 최신 메세지 1개를 반환. (logNo, userNo, type, content, cnt, roomNo)
+     * 4. 먼저 최신 메세지 내용을 교사 응답과 합치기
+     * 5. 학생의 질문 타입에 따라 setAnswer(교사 응답), setIsSuccess(교사응답)을 채운다.
+     *    - 근데 정답에 O를 했거나, 질문 횟수가 20일 때는 게임 종료 신호를 보낸다.
+     * 6. 최신 메세지를 DB에 저장 및 전체 리스트를 반환 하여, 브로드 캐스팅
      * @param map roomNo,response
      */
     public void teacherResponse(Map<String, Object> map) {
-        // 게임방 상태 IN_PROGRESS로 변경
-        Integer roomNo =  (Integer) map.get("roomNo");
+        // map 안의 값을 꺼낸다.
+        int roomNo =  Integer.parseInt(map.get("roomNo").toString());
+        String response = map.get("response").toString();    //교사 응답
+
+        // 게임방의 상태를 변경한다.
         restTemplate.postForEntity(
             apiBaseUrl + "/api/twenty/room/" + roomNo + "/status?status=IN_PROGRESS",
             null, Void.class);
+        System.out.println("teacherResponse - 방 상태 변경 완료");
 
-        //브로드 캐스팅할 값 가공
-        Map<String, Object> map2 = new HashMap<>();
-        map2.put("roomStatus", "IN_PROGRESS");
-        List<SendStdMsg> msgList = new ArrayList<>();
-        String response = map.get("response").toString(); // 교사가 보낸 O or X
-
-        // 가장 최신 메세지 조회
+        // 가장 최신 메세지 1개를 반환
         ResponseEntity<ApiResponse<SendStdMsg>> resp2 = restTemplate.exchange(
             apiBaseUrl + "/api/twenty/room/" + roomNo + "/msg/recent",
             HttpMethod.GET,
@@ -372,68 +373,38 @@ public class TwentyService {
         SendStdMsg recentMsg = resp2.getBody().getData();
         // recentMsg = logNo, type,userNo,content, cnt, roomNo
 
-        //가장 최신 메세지의 타입에 따라서, 교사의 응답에 따른 Update 작업.
-        if("N".equals(response) && recentMsg != null && "Q".equals(recentMsg.getType())) {          //질문에 X한 경우
-            // log 테이블에 업데이트할 메세지의 내용과 질문 응답을 설정
-            recentMsg.setContent(recentMsg.getContent() + " :❌");
-            recentMsg.setAnswer("N");
-
-        }else if("N".equals(response) && recentMsg != null && "A".equals(recentMsg.getType())) {    //정답에 X한 경우
-            // log 테이블에 업데이트할 메세지의 내용과 정답응답을 설정
-            recentMsg.setContent(recentMsg.getContent() + " :❌");
-            recentMsg.setIsSuccess("N");
-
-            //이 메세지가 20번째 이상이라면, 게임이 끝난 상황이므로
-            if(recentMsg.getCnt() >= 20) {
-                // 브로드 캐스팅할 시스템 메세지를 하나 만들고,
-                map2.put("system", "정답을 맞추지 못했습니다.. 선생님은 스무고개를 종료해주세요..");
-                //이 게임방의 결과를 DB에 REST로 요청하여 변경한다.
-                TwentyRoom room = new TwentyRoom();
-                room.setRoomNo(roomNo);
-                room.setIsSuccess("N");
-                room.setTryCnt(recentMsg.getCnt());
-                restTemplate.postForEntity(apiBaseUrl + "/api/twent/room" + roomNo + "/resultUpdate",
-                                              room,
-                                              Void.class);
-            }
-            // 그게 아닌 경우, 아무 설정할 것이 읎다!
-
-        }else if("Y".equals(response) && recentMsg != null && "Q".equals(recentMsg.getType())) {    //질문에 O한 경우
-            // log 테이블에 업데이트할 메세지의 내용과 질문 응답을 설정
+        // 교사의 응답에 따라 최신 메세지 내용 업데이트
+        if("Y".equals(response)) {                                  //교사 응답 O
             recentMsg.setContent(recentMsg.getContent() + " :⭕");
-            recentMsg.setAnswer("Y");
-
-        }else if("Y".equals(response) && recentMsg != null && "A".equals(recentMsg.getType())) {    //정답에 O한 경우
-            // log 테이블에 업데이트할 메세지의 내용과 정답 응답을 설정
-            recentMsg.setContent(recentMsg.getContent() + " :⭕");
-            recentMsg.setIsSuccess("Y");
-
-            //정답을 맞춘 경우로, 브로드캐스팅할 시스템 메세지를 만들고
-            map2.put("system","정답을 맞추셨습니다.!!");
-
-            // 게임방의 결과를 업데이트 한다.!
-            TwentyRoom room = new TwentyRoom();
-            room.setRoomNo(roomNo);
-            room.setIsSuccess("Y");
-            room.setTryCnt(recentMsg.getCnt());
-            room.setWinnerNo(recentMsg.getUserNo());
-            restTemplate.postForEntity(apiBaseUrl + "/api/twent/room" + roomNo + "/resultUpdate",
-                                         room,
-                                         Void.class);
+        }else {                                                     //교사 응답 X
+            recentMsg.setContent(recentMsg.getContent() + " :❌");
         }
 
-        //위 조건문에서 새롭게 설정한 recentMsg를 업데이트하고, 가장 최신의 메세지 리스트를 반환 받는다!
+        Map<String,Object> map2 = new HashMap<>();
+
+        // 학생의 메세지 타입에 따라, recentMsg 객체 업데이트 하기
+        if("Q".equals(recentMsg.getType())) {           // 질문 타입일 경우
+            recentMsg.setAnswer(response);              // 질문에 대한 O,X를 저장
+
+        }else {                                         // 정답 타입일 경우
+            recentMsg.setIsSuccess(response);           // 정답에 대한 O,X를 저장
+
+            // 이때, 정답 & 질문 횟수가 20번을 넘어갔거나, 응답이 O인 경우, 게임 종료 신호 보내기
+            if("Y".equals(response) || recentMsg.getCnt() >= 20) {
+                map2.put("system","스무고개가 끝났습니다... 교사는 종료 버튼을 눌러주세요..");
+            }
+        }
+
+        //이제 가공된 recentMsg를 가지고 log 테이블 업데이트 및 전체 메세지 리스트를 반환
         ResponseEntity<ApiResponse<List<SendStdMsg>>> resp3 = restTemplate.exchange(
             apiBaseUrl + "/api/twenty/updateMsgLog",
             HttpMethod.POST,
             new HttpEntity<>(recentMsg),
             new  ParameterizedTypeReference<ApiResponse<List<SendStdMsg>>>() {}
         );
-        msgList = resp3.getBody().getData();
+        List<SendStdMsg> msgList = resp3.getBody().getData();
+        map2.put("roomStatus", "IN_PROGRESS");
         map2.put("msgList", msgList);
-
-        //브로드 캐스팅
         template.convertAndSend("/topic/TeacherResponce", map2);
-        //map2 : msgList(logNo, userNo, nickName, type, content), roomStatus,system(게임이 끝날 때만)
     }
 }
