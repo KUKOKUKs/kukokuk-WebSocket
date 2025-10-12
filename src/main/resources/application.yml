@@ -4,12 +4,12 @@ server:
 spring:
   data:
     redis:
-      host: localhost
-      port: 6379
-
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
   session:
     store-type: redis
 
 api:
   server:
-    base-url: "http://localhost:8080" # 기존 API 서버 주소
+    base-url: ${API_BASE_URL:http://localhost:8080}
