@@ -122,7 +122,6 @@ public class TwentyService {
      * - 이 게임방의 전체 유저 조회
      * - 게임방을 조회
      * - map 객체에 담아서 브로드캐스팅(전체 유저 + 게임방 상태)
-     *
      * @param roomNo
      */
     public void handleTeacherDisconnect(int roomNo) {
@@ -380,16 +379,16 @@ public class TwentyService {
             recentMsg.setContent(recentMsg.getContent() + " :❌");
         }
 
+        // 사용자 메세지에 교사 응답 집어넣기.
+        recentMsg.setAnswer(response);
+
         Map<String,Object> map2 = new HashMap<>();
 
-        // 학생의 메세지 타입에 따라, recentMsg 객체 업데이트 하기
-        if("Q".equals(recentMsg.getType())) {           // 질문 타입일 경우
-            recentMsg.setAnswer(response);              // 질문에 대한 O,X를 저장
+        // 메세지가 정답 타입일 때, 성공여부에도 값을 할당하고, 게임 종료 여부도 판단.
+        if("A".equals(recentMsg.getType())) {
+            recentMsg.setIsSuccess(response);
 
-        }else {                                         // 정답 타입일 경우
-            recentMsg.setIsSuccess(response);           // 정답에 대한 O,X를 저장
-
-            // 이때, 정답 & 질문 횟수가 20번을 넘어갔거나, 응답이 O인 경우, 게임 종료 신호 보내기
+            // 정답 타입일 때, 교사 응답이 Y 이거나, 총 메세지 개수가 20개 이상일 때, 종료 메세지를 보낸다.
             if("Y".equals(response) || recentMsg.getCnt() >= 20) {
                 map2.put("system","스무고개가 끝났습니다... 교사는 종료 버튼을 눌러주세요..");
             }

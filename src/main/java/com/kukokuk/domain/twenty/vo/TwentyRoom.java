@@ -20,6 +20,7 @@ public class TwentyRoom {
     private int groupNo;
     private int winnerNo;
     private int tryCnt;
+    private String title;
 
     private User user;
 }
