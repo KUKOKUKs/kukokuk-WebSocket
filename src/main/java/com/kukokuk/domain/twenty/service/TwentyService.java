@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -25,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
 @Service
+@Log4j2
 @Transactional
 @RequiredArgsConstructor
 public class TwentyService {
@@ -88,7 +90,7 @@ public class TwentyService {
         req.put("status", "JOINED");
         restTemplate.postForEntity(apiBaseUrl + "/api/twenty/room/user/status", req, Void.class);
 
-        // 2. 최신 참여자 리스트와 방 상태 가져오기
+        // 최신 참여자 리스트 조회
         ResponseEntity<ApiResponse<List<RoomUser>>> resp1 = restTemplate.exchange(
             apiBaseUrl + "/api/twenty/room/" + roomNo + "/players",
             HttpMethod.GET,
@@ -98,7 +100,7 @@ public class TwentyService {
         );
         List<RoomUser> list = resp1.getBody().getData();
 
-        //최신 방 데이터 가져오기
+        //최신 방 데이터 조회
         ResponseEntity<ApiResponse<TwentyRoom>> resp2 = restTemplate.exchange(
             apiBaseUrl + "/api/twenty/room/" + roomNo,
             HttpMethod.GET,
@@ -122,13 +124,13 @@ public class TwentyService {
      * - 이 게임방의 전체 유저 조회
      * - 게임방을 조회
      * - map 객체에 담아서 브로드캐스팅(전체 유저 + 게임방 상태)
-     *
      * @param roomNo
      */
     public void handleTeacherDisconnect(int roomNo) {
+
         // 현재 게임방을 조회
         ResponseEntity<ApiResponse<TwentyRoom>> resp1 = restTemplate.exchange(
-            apiBaseUrl + "/api/twenty/room/" + roomNo,
+            apiBaseUrl + "/api/twenty/room/all/" + roomNo,
             HttpMethod.GET,
             null,
             new ParameterizedTypeReference<ApiResponse<TwentyRoom>>() {
@@ -137,28 +139,40 @@ public class TwentyService {
         TwentyRoom room = resp1.getBody().getData();
 
         Map<String, Object> map = new HashMap<>();
-        // 게임방이 이미 종료된 것이라면, 어차피 조회가 안되서 null일 것이다!
-        if (room == null) {
-            System.out.println("이미 종료된 게임방입니다.");
-        } else {            //그렇다면 그냥 생으로 닫은 경우 이런 식으로 게임방과 사용자의 상태를 변경한다!
+
+        //이 게임방의 상태가 COMPLETED일 경우 브로드 캐스팅
+        if ("COMPLETED".equals(room.getStatus())) {
+            broadDelay("/topic/gameComplete",roomNo,500);
+            log.info("게임 종료, 브로드캐스팅, 게임방 상태 : {}",room.getStatus() );
+            return;
+        } else { //그 외의 경우 게임을 일부러 중단한 상황이므로, 게임방 상태를 변경 -> 브로드 캐스팅
             map.put("roomStatus", "STOPPED");
             map.put("status", "LEFT");
             map.put("roomNo", roomNo);
             restTemplate.postForObject(apiBaseUrl + "/api/twenty/room/disconnect/teacher",
                 map, Void.class);
+            String payLoad = "연결을 끊습니다.";
+            broadDelay("/topic/TeacherDisconnect", payLoad,500);
+            log.info("게임 중단,브로드캐스팅,STOPPED");
         }
+    }
 
-        String payLoad = "연결을 끊습니다.";
+    /**
+     * 웹소켓 서버가 끊긴 상황에 로직 수행할 때, 서버 끊김을 잠시 딜레이를 걸어 정상적으로 브로드 캐스팅하기 위한 메소드
+     * @param topic 브로드 캐스팅 주소
+     * @param data 브로드 캐스팅 시, 보내야하는 데이터
+     * @param delay 딜레이 시간
+     */
+    public void broadDelay(String topic, Object data, long delay) {
         taskScheduler.schedule(
             () -> {
                 try {
-                    template.convertAndSend("/topic/TeacherDisconnect", payLoad);
-                    System.out.println("✅ 교사 종료 이벤트 전송 완료");
-                } catch (Exception e) {
-                    System.err.println("⚠️ 전송 실패: " + e.getMessage());
+                    template.convertAndSend(topic,data);
+                }catch (Exception e) {
+                    System.err.println(e.getMessage());
                 }
             },
-            Instant.now().plusMillis(500) // 500ms (0.5초) 지연
+            Instant.now().plusMillis(delay)
         );
     }
 
@@ -193,12 +207,10 @@ public class TwentyService {
 
     /**
      * 손들기 버튼 기능
-     * 1. AWAITING_INPUT으로 방 상태 변경.
-     * 2. 40초 서버 타이머 부여.
-     * 3. 현재 게임방의 메세지 개수를 조회.
-     *  - 19개 이상이라면, 경고 메세지 map 객체에 할당
-     * 4. 그 외 필수 데이터 map 객체에 할당
-     * 5. 브로드 캐스팅
+     * 1. 사용자가 손들기 버튼을 누르면, 먼저 이 사용자가 가장 먼저 누른 사용자인지 확인.
+     * 2. true라면, 게임방 상태 : AWAITING_INPUT으로 변경 -> 40초 제한시간 부여 -> userNo,nickName,time, roomStatus를 map 객체에 할당.
+     * 3. 여기서 질문 개수를 한번 조회해서, 19개 이상일 경우 시스템 메세지를 만들어 map 객체에 할당
+     * 4. 이후 브로드 캐스팅
      * @param roomNo
      * @param userNo
      */
@@ -215,7 +227,6 @@ public class TwentyService {
                 taskScheduler.schedule(() -> turnTimeout(roomNo), Instant.now().plusSeconds(40));
             scheduledTasks.put(roomNo, scheduledFuture);
 
-            //브로드캐스팅 시 필수로 보내야하는 값을 먼저 담기
             Map<String, Object> map = new HashMap<>();
 
             // 현재 게임방의 질문&정답 횟수를 조회.
@@ -380,16 +391,16 @@ public class TwentyService {
             recentMsg.setContent(recentMsg.getContent() + " :❌");
         }
 
+        // 사용자 메세지에 교사 응답 집어넣기.
+        recentMsg.setAnswer(response);
+
         Map<String,Object> map2 = new HashMap<>();
 
-        // 학생의 메세지 타입에 따라, recentMsg 객체 업데이트 하기
-        if("Q".equals(recentMsg.getType())) {           // 질문 타입일 경우
-            recentMsg.setAnswer(response);              // 질문에 대한 O,X를 저장
+        // 메세지가 정답 타입일 때, 성공여부에도 값을 할당하고, 게임 종료 여부도 판단.
+        if("A".equals(recentMsg.getType())) {
+            recentMsg.setIsSuccess(response);
 
-        }else {                                         // 정답 타입일 경우
-            recentMsg.setIsSuccess(response);           // 정답에 대한 O,X를 저장
-
-            // 이때, 정답 & 질문 횟수가 20번을 넘어갔거나, 응답이 O인 경우, 게임 종료 신호 보내기
+            // 정답 타입일 때, 교사 응답이 Y 이거나, 총 메세지 개수가 20개 이상일 때, 종료 메세지를 보낸다.
             if("Y".equals(response) || recentMsg.getCnt() >= 20) {
                 map2.put("system","스무고개가 끝났습니다... 교사는 종료 버튼을 눌러주세요..");
             }
