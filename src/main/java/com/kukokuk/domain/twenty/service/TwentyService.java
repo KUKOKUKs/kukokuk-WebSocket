@@ -6,8 +6,6 @@ import com.kukokuk.domain.twenty.dto.SendStdMsg;
 import com.kukokuk.domain.twenty.util.RedisLockManager;
 import com.kukokuk.domain.twenty.vo.TwentyRoom;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -142,8 +140,6 @@ public class TwentyService {
 
         //이 게임방의 상태가 COMPLETED일 경우 브로드 캐스팅
         if ("COMPLETED".equals(room.getStatus())) {
-            broadDelay("/topic/gameComplete",roomNo,500);
-            log.info("게임 종료, 브로드캐스팅, 게임방 상태 : {}",room.getStatus() );
             return;
         } else { //그 외의 경우 게임을 일부러 중단한 상황이므로, 게임방 상태를 변경 -> 브로드 캐스팅
             map.put("roomStatus", "STOPPED");
@@ -372,8 +368,6 @@ public class TwentyService {
         restTemplate.postForEntity(
             apiBaseUrl + "/api/twenty/room/" + roomNo + "/status?status=IN_PROGRESS",
             null, Void.class);
-        System.out.println("teacherResponse - 방 상태 변경 완료");
-
         // 가장 최신 메세지 1개를 반환
         ResponseEntity<ApiResponse<SendStdMsg>> resp2 = restTemplate.exchange(
             apiBaseUrl + "/api/twenty/room/" + roomNo + "/msg/recent",
@@ -383,29 +377,36 @@ public class TwentyService {
         );
         SendStdMsg recentMsg = resp2.getBody().getData();
         // recentMsg = logNo, type,userNo,content, cnt, roomNo
+        log.info("recentmsg: {}",  recentMsg.getLogNo());
 
-        // 교사의 응답에 따라 최신 메세지 내용 업데이트
+        // 교사의 응답에 따라 최신 메세지 내용 업데이트(메세지 타입 상관 없이)
         if("Y".equals(response)) {                                  //교사 응답 O
             recentMsg.setContent(recentMsg.getContent() + " :⭕");
         }else {                                                     //교사 응답 X
             recentMsg.setContent(recentMsg.getContent() + " :❌");
         }
 
-        // 사용자 메세지에 교사 응답 집어넣기.
+        // 사용자 메세지에 교사 응답 집어넣기.(메세지에 대한 응답이니까)
         recentMsg.setAnswer(response);
 
         Map<String,Object> map2 = new HashMap<>();
 
-        // 메세지가 정답 타입일 때, 성공여부에도 값을 할당하고, 게임 종료 여부도 판단.
+        // 메세지가 정답 타입일 때, 성공 여부에도 교사 응답을 집어 넣는다.
         if("A".equals(recentMsg.getType())) {
             recentMsg.setIsSuccess(response);
 
-            // 정답 타입일 때, 교사 응답이 Y 이거나, 총 메세지 개수가 20개 이상일 때, 종료 메세지를 보낸다.
+            // 정답 타입일 때, 교사 응답이 Y 이거나, 총 메세지 개수가 20개 이상일 때는 게임이 끝난 상황
+            // 따라서 결과를 저장.
             if("Y".equals(response) || recentMsg.getCnt() >= 20) {
-                map2.put("system","스무고개가 끝났습니다... 교사는 종료 버튼을 눌러주세요..");
+                map2.put("var","스무고개 종료."); // 이건 종료되었다는 신호를 보낼려고 넣는 변수
+                map2.put("teacherResponse",response); // 정답 응답에 따라, 안내 메세지를 다르게 하려고 넣는 거
+                log.info("recentmsg : {}", recentMsg);
+
+                //최근 메세지를 던져서, 게임방의 결과를 저장.
+                restTemplate.postForObject(apiBaseUrl + "/api/twenty/room/gameOver",
+                    recentMsg, Void.class);
             }
         }
-
         //이제 가공된 recentMsg를 가지고 log 테이블 업데이트 및 전체 메세지 리스트를 반환
         ResponseEntity<ApiResponse<List<SendStdMsg>>> resp3 = restTemplate.exchange(
             apiBaseUrl + "/api/twenty/updateMsgLog",

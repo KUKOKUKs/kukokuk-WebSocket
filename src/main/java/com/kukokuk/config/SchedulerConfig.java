@@ -2,6 +2,7 @@ package com.kukokuk.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 @Configuration
@@ -14,6 +15,7 @@ public class SchedulerConfig {
      * @return
      */
     @Bean
+    @Primary
     public ThreadPoolTaskScheduler taskScheduler() {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
         scheduler.setPoolSize(5);                   //최대 5개의 타이머 작업을 할 수 있음.
