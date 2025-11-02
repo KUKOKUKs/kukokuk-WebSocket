@@ -338,7 +338,7 @@ public class TwentyService {
         Map<String, Object> map = new HashMap<>();
         map.put("logNo", currentMsg.getLogNo());
         map.put("userNo", currentMsg.getUserNo());
-        map.put("msgType", currentMsg.getType());
+        map.put("type", currentMsg.getType());
         map.put("content", currentMsg.getContent());
         map.put("nickName", nickName);
         map.put("msgCnt",msgCnt);
