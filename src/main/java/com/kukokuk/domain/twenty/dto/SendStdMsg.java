@@ -1,5 +1,6 @@
 package com.kukokuk.domain.twenty.dto;
 
+import com.kukokuk.common.util.FilePathUtil;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -17,4 +18,10 @@ public class SendStdMsg {
     private String isSuccess; // 정답에 대한 O,X
     private String answer;    // 질문에 대한 O,X
     String nickName;          //유저 닉네임
+    String profileFilename;
+
+    // 프로필 이미지 경로 생성
+    public String getProfileFileUrl() {
+        return FilePathUtil.getProfileImagePath(userNo, profileFilename);
+    }
 }

@@ -296,7 +296,7 @@ public class TwentyService {
      * 6.msg에 담긴 내용, 방의 상태를 map에 담아 브로드 캐스팅.
      * @param msg
      */
-    public void sendStdMsg(SendStdMsg msg, String nickName) {
+    public void sendStdMsg(SendStdMsg msg, String nickName, String profileFilename) {
         ScheduledFuture<?> scheduledTask = scheduledTasks.get(msg.getRoomNo());
 
         //타이머 삭제
@@ -342,6 +342,7 @@ public class TwentyService {
         map.put("content", currentMsg.getContent());
         map.put("nickName", nickName);
         map.put("msgCnt",msgCnt);
+        map.put("profileFileUrl",  profileFilename);
         map.put("roomStatus", "AWAITING_RESPONSE");
 
         //실시간 채팅 메세지를 화면에 실시간으로 보여주기 위해 브로드 캐스팅 실행.

@@ -85,7 +85,8 @@ public class TwentyController {
             return;
         }
         String nickName = (String) accessor.getSessionAttributes().get("nickName");
-        twentyService.sendStdMsg(msg,nickName);
+        String profileFilename = (String)accessor.getSessionAttributes().get("profileFilename");
+        twentyService.sendStdMsg(msg,nickName,profileFilename);
     }
 
     /**
