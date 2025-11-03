@@ -1,5 +1,6 @@
 package com.kukokuk.domain.user.vo;
 
+import com.kukokuk.common.util.FilePathUtil;
 import java.io.Serializable;
 import java.util.Date;
 import java.util.List;
@@ -40,11 +41,9 @@ public class User implements Serializable {
     private List<String> roleNames;             // 사용자 권한 정보 목록
     private Integer groupNo;                    // 사용자가 속한 그룹 번호(그룹에 속하지 않았으면 Null)
 
+    // 프로필 이미지 경로 생성
     public String getProfileFileUrl() {
-        if (profileFilename == null || profileFilename.isBlank()) {
-            return null;
-        }
-        return "/images/profile/" + userNo + "/" + profileFilename;
+        return FilePathUtil.getProfileImagePath(userNo, profileFilename);
     }
 
 }
