@@ -1,5 +1,6 @@
 package com.kukokuk.domain.twenty.controller;
 
+import com.kukokuk.common.util.FilePathUtil;
 import com.kukokuk.domain.twenty.dto.SendStdMsg;
 import com.kukokuk.domain.twenty.service.TwentyService;
 import java.util.Map;
@@ -86,7 +87,8 @@ public class TwentyController {
         }
         String nickName = (String) accessor.getSessionAttributes().get("nickName");
         String profileFilename = (String)accessor.getSessionAttributes().get("profileFilename");
-        twentyService.sendStdMsg(msg,nickName,profileFilename);
+        Integer userNo = (Integer) accessor.getSessionAttributes().get("userNo");
+        twentyService.sendStdMsg(msg,nickName, FilePathUtil.getProfileImagePath(userNo, profileFilename));
     }
 
     /**
